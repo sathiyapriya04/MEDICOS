@@ -13,6 +13,7 @@ import 'package:path/path.dart' as path;
 import 'dart:io';
 import 'package:medicos/services/notification_service.dart';
 import 'package:medicos/screens/settings_screen.dart';
+import 'package:image_picker/image_picker.dart'; // Added for camera functionality
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -28,6 +29,10 @@ class _HomeScreenState extends State<HomeScreen>
   String _assistantResponse = '';
   late AnimationController _animationController;
   late Animation<double> _animation;
+  final ImagePicker _picker = ImagePicker(); // Added for camera functionality
+  Map<String, dynamic>? userProfileData; // Add this for profile data
+  bool isLoadingProfile = true; // Add this for loading state
+  String? avatarUrl; // Add this for avatar URL
 
   @override
   void initState() {
@@ -40,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
+    _fetchUserProfile(); // Add this to fetch profile data
   }
 
   @override
@@ -187,14 +193,152 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _openCamera() {
-    // Camera functionality to be implemented
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Camera feature coming soon!"),
-        backgroundColor: Colors.green,
-      ),
-    );
+  Future<void> _openCamera() async {
+    try {
+      // Show bottom sheet to choose between camera and gallery
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        builder: (BuildContext context) {
+          return Container(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  leading: Icon(
+                    Icons.photo_camera,
+                    color: Colors.green,
+                    size: 28,
+                  ),
+                  title: Text('Take Photo', style: TextStyle(fontSize: 16)),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                Divider(),
+                ListTile(
+                  leading: Icon(
+                    Icons.photo_library,
+                    color: Colors.green,
+                    size: 28,
+                  ),
+                  title: Text(
+                    'Choose from Gallery',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+      if (source == null) return;
+
+      // Request appropriate permission
+      if (source == ImageSource.camera) {
+        var status = await Permission.camera.status;
+        if (!status.isGranted) {
+          status = await Permission.camera.request();
+        }
+        if (!status.isGranted) {
+          _showError(
+            'Camera permission denied. Please enable it from app settings.',
+          );
+          return;
+        }
+      } else if (source == ImageSource.gallery) {
+        if (Platform.isAndroid) {
+          var status = await Permission.photos.request();
+          print('Photos permission status: $status');
+          if (!status.isGranted) {
+            _showError(
+              'Photos permission denied. Please enable it from app settings.',
+            );
+            return;
+          }
+        }
+      }
+
+      final XFile? photo = await _picker.pickImage(
+        source: source,
+        imageQuality: 85,
+      );
+
+      if (photo != null) {
+        // Show loading indicator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Center(child: CircularProgressIndicator()),
+        );
+
+        try {
+          // Get current user
+          final user = FirebaseAuth.instance.currentUser;
+          if (user == null) throw Exception("User not logged in");
+
+          // Create a reference to Firebase Storage
+          final storageRef = FirebaseStorage.instance.ref();
+          final imageRef = storageRef.child(
+            'camera_images/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+
+          // Upload the file
+          await imageRef.putFile(File(photo.path));
+
+          // Get the download URL
+          final downloadURL = await imageRef.getDownloadURL();
+
+          // Save the image URL to Firestore
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('camera_images')
+              .add({
+                'imageUrl': downloadURL,
+                'timestamp': FieldValue.serverTimestamp(),
+                'source': source == ImageSource.camera ? 'camera' : 'gallery',
+              });
+
+          // Close loading indicator
+          Navigator.pop(context);
+
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Photo uploaded successfully!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          // Show the captured/selected image
+          showDialog(
+            context: context,
+            builder:
+                (context) => Dialog(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.network(downloadURL, fit: BoxFit.cover),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text('Close'),
+                      ),
+                    ],
+                  ),
+                ),
+          );
+        } catch (e) {
+          // Close loading indicator
+          Navigator.pop(context);
+          throw e;
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Future<void> _pickPDF() async {
@@ -434,7 +578,7 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               _buildMenuTile(
                 icon: Icons.camera_alt,
-                title: "Camera",
+                title: "Photo Upload",
                 onTap: () {
                   Navigator.pop(context);
                   _openCamera();
@@ -518,29 +662,110 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.medical_services,
-                              size: isSmallScreen ? 24 : 30,
-                              color: Colors.green.shade600,
-                            ),
+                          Stack(
+                            children: [
+                              GestureDetector(
+                                onTap: _updateAvatar,
+                                child: Container(
+                                  width: isSmallScreen ? 60 : 70,
+                                  height: isSmallScreen ? 60 : 70,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 3,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 8,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child:
+                                        avatarUrl != null
+                                            ? Image.network(
+                                              avatarUrl!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (
+                                                context,
+                                                error,
+                                                stackTrace,
+                                              ) {
+                                                return Container(
+                                                  color: Colors.green.shade100,
+                                                  child: Icon(
+                                                    Icons.person,
+                                                    size:
+                                                        isSmallScreen ? 35 : 40,
+                                                    color:
+                                                        Colors.green.shade600,
+                                                  ),
+                                                );
+                                              },
+                                              loadingBuilder: (
+                                                context,
+                                                child,
+                                                loadingProgress,
+                                              ) {
+                                                if (loadingProgress == null)
+                                                  return child;
+                                                return Center(
+                                                  child: CircularProgressIndicator(
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                          Color
+                                                        >(Colors.white),
+                                                  ),
+                                                );
+                                              },
+                                            )
+                                            : Container(
+                                              color: Colors.green.shade100,
+                                              child: Icon(
+                                                Icons.person,
+                                                size: isSmallScreen ? 35 : 40,
+                                                color: Colors.green.shade600,
+                                              ),
+                                            ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  padding: EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade600,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          SizedBox(width: isSmallScreen ? 10 : 15),
+                          SizedBox(width: isSmallScreen ? 15 : 20),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   user != null
-                                      ? "Hello, ${user.email?.split('@')[0] ?? 'User'}!"
+                                      ? "Hello, ${userProfileData?['fullName']?.split(' ')[0] ?? user.email?.split('@')[0] ?? 'User'}!"
                                       : "Hello, Guest!",
                                   style: TextStyle(
-                                    fontSize: isSmallScreen ? 16 : 18,
+                                    fontSize: isSmallScreen ? 18 : 20,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
@@ -549,7 +774,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 Text(
                                   "Your AI-powered medication assistant",
                                   style: TextStyle(
-                                    fontSize: isSmallScreen ? 12 : 14,
+                                    fontSize: isSmallScreen ? 13 : 15,
                                     color: Colors.white.withOpacity(0.9),
                                   ),
                                 ),
@@ -654,7 +879,7 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         _buildFeatureCard(
                           icon: Icons.camera_alt,
-                          title: "Camera",
+                          title: "Photo Upload",
                           color: Colors.teal,
                           onTap: () {
                             _openCamera();
@@ -989,5 +1214,122 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _fetchUserProfile() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final docSnapshot =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+
+        if (docSnapshot.exists) {
+          setState(() {
+            userProfileData = docSnapshot.data();
+            avatarUrl = userProfileData!['avatarUrl'];
+            isLoadingProfile = false;
+          });
+        }
+      }
+    } catch (e) {
+      print("Error fetching profile: $e");
+      setState(() {
+        isLoadingProfile = false;
+      });
+    }
+  }
+
+  Future<void> _updateAvatar() async {
+    try {
+      // Show bottom sheet to choose between camera and gallery
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        builder: (BuildContext context) {
+          return SafeArea(
+            child: Wrap(
+              children: <Widget>[
+                ListTile(
+                  leading: Icon(Icons.photo_camera),
+                  title: Text('Take Photo'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: Icon(Icons.photo_library),
+                  title: Text('Choose from Gallery'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+      if (source == null) return;
+
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        // Show loading indicator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Center(child: CircularProgressIndicator()),
+        );
+
+        try {
+          final user = FirebaseAuth.instance.currentUser;
+          if (user == null) throw Exception("User not logged in");
+
+          // Upload to Firebase Storage
+          final storageRef = FirebaseStorage.instance.ref();
+          final avatarRef = storageRef.child(
+            'avatars/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+
+          await avatarRef.putFile(File(image.path));
+          final downloadURL = await avatarRef.getDownloadURL();
+
+          // Update Firestore with avatar URL
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({
+                'avatarUrl': downloadURL,
+                'avatarUpdateDate': FieldValue.serverTimestamp(),
+              });
+
+          // Close loading indicator
+          Navigator.pop(context);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Profile picture updated successfully!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          // Refresh profile data
+          await _fetchUserProfile();
+        } catch (e) {
+          Navigator.pop(context);
+          throw e;
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error updating profile picture: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

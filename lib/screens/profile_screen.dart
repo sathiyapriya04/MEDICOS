@@ -4,6 +4,74 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
+
+// Add this new widget for scanning animation
+class ScanningAnimation extends StatefulWidget {
+  final Widget child;
+  final bool isScanning;
+
+  const ScanningAnimation({
+    Key? key,
+    required this.child,
+    required this.isScanning,
+  }) : super(key: key);
+
+  @override
+  _ScanningAnimationState createState() => _ScanningAnimationState();
+}
+
+class _ScanningAnimationState extends State<ScanningAnimation>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+
+    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.child,
+        if (widget.isScanning)
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.green.withOpacity(0.3),
+                      Colors.transparent,
+                      Colors.green.withOpacity(0.3),
+                    ],
+                    stops: [0.0, _animation.value, 1.0],
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -30,6 +98,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _altPhoneController = TextEditingController();
   final TextEditingController _guardianController = TextEditingController();
+
+  // Add this new variable
+  bool isScanning = false;
 
   @override
   void initState() {
@@ -156,8 +227,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _selectProfilePicture() async {
     final ImagePicker picker = ImagePicker();
     try {
+      // Request storage permission first
+      if (Platform.isAndroid) {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Storage permission is required to access photos'),
+            ),
+          );
+          return;
+        }
+      }
+
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        builder: (BuildContext context) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  leading: Icon(Icons.photo_camera, color: Colors.green),
+                  title: Text('Take Photo'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: Icon(Icons.photo_library, color: Colors.green),
+                  title: Text('Choose from Gallery'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+
+      if (source == null) return;
+
+      // Request specific permissions based on source
+      if (source == ImageSource.gallery) {
+        if (Platform.isAndroid) {
+          final status = await Permission.photos.request();
+          if (!status.isGranted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Gallery permission is required to select photos',
+                ),
+              ),
+            );
+            return;
+          }
+        }
+      } else if (source == ImageSource.camera) {
+        final status = await Permission.camera.request();
+        if (!status.isGranted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Camera permission is required to take photos'),
+            ),
+          );
+          return;
+        }
+      }
+
       final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery,
+        source: source,
         maxWidth: 512,
         maxHeight: 512,
         imageQuality: 85,
@@ -166,26 +303,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (image != null) {
         setState(() {
           isLoading = true;
+          isScanning = true;
         });
 
         try {
-          // Get current user
           User? user = _auth.currentUser;
           if (user == null) throw Exception("User not logged in");
 
-          // Create a reference to the location you want to upload to in Firebase Storage
           final storageRef = _storage.ref();
           final profileImageRef = storageRef.child(
             'profile_images/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg',
           );
 
-          // Upload the file
-          await profileImageRef.putFile(File(image.path));
+          // Show uploading message
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Uploading photo...')));
 
-          // Get the download URL
+          await profileImageRef.putFile(File(image.path));
           final downloadURL = await profileImageRef.getDownloadURL();
 
-          // Update Firestore with the new profile image URL
           await _firestore.collection('users').doc(user.uid).update({
             'profileImageUrl': downloadURL,
           });
@@ -193,14 +330,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           setState(() {
             profileImageUrl = downloadURL;
             isLoading = false;
+            isScanning = false;
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Profile picture updated successfully')),
           );
         } catch (e) {
+          print("Error uploading image: $e");
           setState(() {
             isLoading = false;
+            isScanning = false;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error uploading profile picture: $e')),
@@ -208,6 +348,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     } catch (e) {
+      print("Error selecting image: $e");
+      setState(() {
+        isScanning = false;
+      });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error selecting image: $e')));
@@ -264,71 +408,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onTap: isEditing ? _selectProfilePicture : null,
                         child: Stack(
                           children: [
-                            Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade300,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.green,
-                                  width: 3.0,
+                            ScanningAnimation(
+                              isScanning: isScanning,
+                              child: Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade300,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.green,
+                                    width: 3.0,
+                                  ),
                                 ),
-                              ),
-                              child:
-                                  profileImageUrl != null &&
-                                          profileImageUrl!.isNotEmpty
-                                      ? ClipOval(
-                                        child: Image.network(
-                                          profileImageUrl!,
-                                          fit: BoxFit.cover,
-                                          width: 120,
-                                          height: 120,
-                                          errorBuilder: (
-                                            context,
-                                            error,
-                                            stackTrace,
-                                          ) {
-                                            print(
-                                              "❌ Error loading profile image: $error",
-                                            );
-                                            return Icon(
-                                              Icons.person,
-                                              size: 80,
-                                              color: Colors.white,
-                                            );
-                                          },
-                                          loadingBuilder: (
-                                            context,
-                                            child,
-                                            loadingProgress,
-                                          ) {
-                                            if (loadingProgress == null)
-                                              return child;
-                                            print(
-                                              "🔄 Loading profile image: ${loadingProgress.cumulativeBytesLoaded} / ${loadingProgress.expectedTotalBytes}",
-                                            );
-                                            return Center(
-                                              child: CircularProgressIndicator(
-                                                value:
-                                                    loadingProgress
-                                                                .expectedTotalBytes !=
-                                                            null
-                                                        ? loadingProgress
-                                                                .cumulativeBytesLoaded /
-                                                            loadingProgress
-                                                                .expectedTotalBytes!
-                                                        : null,
-                                              ),
-                                            );
-                                          },
+                                child:
+                                    profileImageUrl != null &&
+                                            profileImageUrl!.isNotEmpty
+                                        ? ClipOval(
+                                          child: Image.network(
+                                            profileImageUrl!,
+                                            fit: BoxFit.cover,
+                                            width: 120,
+                                            height: 120,
+                                            errorBuilder: (
+                                              context,
+                                              error,
+                                              stackTrace,
+                                            ) {
+                                              print(
+                                                "❌ Error loading profile image: $error",
+                                              );
+                                              return Icon(
+                                                Icons.person,
+                                                size: 80,
+                                                color: Colors.white,
+                                              );
+                                            },
+                                            loadingBuilder: (
+                                              context,
+                                              child,
+                                              loadingProgress,
+                                            ) {
+                                              if (loadingProgress == null)
+                                                return child;
+                                              print(
+                                                "🔄 Loading profile image: ${loadingProgress.cumulativeBytesLoaded} / ${loadingProgress.expectedTotalBytes}",
+                                              );
+                                              return Center(
+                                                child: CircularProgressIndicator(
+                                                  value:
+                                                      loadingProgress
+                                                                  .expectedTotalBytes !=
+                                                              null
+                                                          ? loadingProgress
+                                                                  .cumulativeBytesLoaded /
+                                                              loadingProgress
+                                                                  .expectedTotalBytes!
+                                                          : null,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        )
+                                        : Icon(
+                                          Icons.person,
+                                          size: 80,
+                                          color: Colors.white,
                                         ),
-                                      )
-                                      : Icon(
-                                        Icons.person,
-                                        size: 80,
-                                        color: Colors.white,
-                                      ),
+                              ),
                             ),
                             if (isEditing)
                               Positioned(

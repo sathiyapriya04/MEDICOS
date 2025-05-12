@@ -7,6 +7,7 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:intl/intl.dart';
 import '../services/notification_service.dart';
+import '../services/whatsapp_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -86,8 +87,10 @@ class _ReminderScreenState extends State<ReminderScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final NotificationService _notificationService = NotificationService();
+  final WhatsAppService _whatsappService = WhatsAppService();
   bool _showNotifications = false;
   List<String> _notifications = [];
+  String? _userPhoneNumber;
 
   @override
   void initState() {
@@ -95,11 +98,23 @@ class _ReminderScreenState extends State<ReminderScreen> {
     _ensureUser();
     _initializeNotifications();
     _setupNotificationActions();
-    // Initialize with dummy notifications for demo
-    _notifications = [
-      "Take your evening dose of Aspirin",
-      "Medicine reminder: Vitamin D at 6:00 PM",
-    ];
+    _fetchUserPhoneNumber();
+  }
+
+  Future<void> _fetchUserPhoneNumber() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        final doc = await _firestore.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          setState(() {
+            _userPhoneNumber = doc['phone'] as String?;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error fetching user phone number: $e');
+    }
   }
 
   Future<void> _initializeNotifications() async {
@@ -1392,7 +1407,51 @@ class _ReminderScreenState extends State<ReminderScreen> {
         payload: 'reminder_${docRef.id}',
       );
 
-      // Show success message
+      // Send WhatsApp notification if phone number is available
+      if (_userPhoneNumber != null) {
+        try {
+          final message =
+              '🔔 Medication Reminder\n\n'
+              'Medicine: $medicineName\n'
+              'Dosage: $dosage\n'
+              'Time: ${DateFormat('hh:mm a').format(scheduledTime)}\n\n'
+              'Please take your medication as prescribed.';
+
+          await _whatsappService.sendWhatsAppMessage(
+            _userPhoneNumber!,
+            message,
+          );
+
+          // Show success message for WhatsApp
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("WhatsApp notification sent successfully"),
+              backgroundColor: Colors.green.shade700,
+            ),
+          );
+        } on WhatsAppServiceException catch (e) {
+          // Show error message for WhatsApp failure
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_whatsappService.formatErrorMessage(e)),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+
+          // Log the error for debugging
+          print('WhatsApp notification failed: ${e.toString()}');
+        }
+      }
+
+      // Show success message for reminder creation
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Reminder added successfully"),
@@ -1400,11 +1459,19 @@ class _ReminderScreenState extends State<ReminderScreen> {
         ),
       );
     } catch (e) {
-      // Show error message
+      // Show error message for reminder creation failure
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error adding reminder: $e"),
           backgroundColor: Colors.red,
+          duration: Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Dismiss',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
         ),
       );
     }

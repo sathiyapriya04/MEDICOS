@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -36,10 +37,16 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (errorMessage == null) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen()),
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage, style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(errorMessage, style: TextStyle(color: Colors.white)),
+          backgroundColor: Colors.red,
+        ),
       );
     }
 
@@ -71,14 +78,20 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(color: Colors.grey[600]),
-          floatingLabelStyle: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+          floatingLabelStyle: TextStyle(
+            color: Colors.green[700],
+            fontWeight: FontWeight.bold,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: Colors.green.withOpacity(0.3), width: 1),
+            borderSide: BorderSide(
+              color: Colors.green.withOpacity(0.3),
+              width: 1,
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
@@ -88,16 +101,26 @@ class _LoginScreenState extends State<LoginScreen> {
           fillColor: Colors.white,
           contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           prefixIcon: Icon(icon, color: Colors.green[700]),
-          suffixIcon: isPassword
-              ? IconButton(
-            icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off, color: Colors.green[700]),
-            onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-          )
-              : null,
+          suffixIcon:
+              isPassword
+                  ? IconButton(
+                    icon: Icon(
+                      _isPasswordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                      color: Colors.green[700],
+                    ),
+                    onPressed:
+                        () => setState(
+                          () => _isPasswordVisible = !_isPasswordVisible,
+                        ),
+                  )
+                  : null,
         ),
         validator: (value) {
           if (value == null || value.isEmpty) return "$label cannot be empty";
-          if (label == "Email" && !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+          if (label == "Email" &&
+              !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
             return "Enter a valid email";
           }
           if (label == "Password" && value.length < 6) {
@@ -109,7 +132,11 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildSocialLoginButton({required IconData icon, required Color color, required VoidCallback onPressed}) {
+  Widget _buildSocialLoginButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
     return Container(
       width: 60,
       height: 60,
@@ -420,10 +447,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Hero(
-                        tag: 'app_logo',
-                        child: _buildSmartMedicationIcon(),
-                      ),
+                      Hero(tag: 'app_logo', child: _buildSmartMedicationIcon()),
                       SizedBox(height: 30),
                       Text(
                         "AI Medication Reminder",
@@ -461,16 +485,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => ForgotPasswordPage()));
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ForgotPasswordPage(),
+                              ),
+                            );
                           },
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.green[700],
                           ),
                           child: Text(
                             "Forgot Password?",
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
                       ),
@@ -490,29 +517,35 @@ class _LoginScreenState extends State<LoginScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          child: _isLoading
-                              ? SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                              : Text(
-                            "SIGN IN",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
+                          child:
+                              _isLoading
+                                  ? SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                  : Text(
+                                    "SIGN IN",
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
                         ),
                       ),
                       SizedBox(height: 40),
                       Row(
                         children: [
-                          Expanded(child: Divider(color: Colors.grey[400], thickness: 1)),
+                          Expanded(
+                            child: Divider(
+                              color: Colors.grey[400],
+                              thickness: 1,
+                            ),
+                          ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: Text(
@@ -525,7 +558,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ),
-                          Expanded(child: Divider(color: Colors.grey[400], thickness: 1)),
+                          Expanded(
+                            child: Divider(
+                              color: Colors.grey[400],
+                              thickness: 1,
+                            ),
+                          ),
                         ],
                       ),
                       SizedBox(height: 25),
@@ -540,7 +578,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           _buildSocialLoginButton(
                             icon: Icons.facebook,
                             color: Colors.blue[700]!,
-                            onPressed: () {}, // TODO: Implement Facebook Sign-In
+                            onPressed:
+                                () {}, // TODO: Implement Facebook Sign-In
                           ),
                           _buildSocialLoginButton(
                             icon: Icons.apple,
@@ -561,10 +600,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => SignupScreen()),
-                            ),
+                            onPressed:
+                                () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => SignupScreen(),
+                                  ),
+                                ),
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.green[700],
                             ),
@@ -598,28 +640,79 @@ class BrainPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
 
     final path = Path();
 
     // Left hemisphere
     path.moveTo(size.width * 0.25, size.height * 0.4);
-    path.quadraticBezierTo(size.width * 0.1, size.height * 0.3, size.width * 0.2, size.height * 0.2);
-    path.quadraticBezierTo(size.width * 0.3, size.height * 0.1, size.width * 0.4, size.height * 0.2);
-    path.quadraticBezierTo(size.width * 0.45, size.height * 0.3, size.width * 0.45, size.height * 0.5);
-    path.quadraticBezierTo(size.width * 0.45, size.height * 0.7, size.width * 0.3, size.height * 0.8);
-    path.quadraticBezierTo(size.width * 0.15, size.height * 0.7, size.width * 0.25, size.height * 0.4);
+    path.quadraticBezierTo(
+      size.width * 0.1,
+      size.height * 0.3,
+      size.width * 0.2,
+      size.height * 0.2,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.3,
+      size.height * 0.1,
+      size.width * 0.4,
+      size.height * 0.2,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.45,
+      size.height * 0.3,
+      size.width * 0.45,
+      size.height * 0.5,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.45,
+      size.height * 0.7,
+      size.width * 0.3,
+      size.height * 0.8,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.15,
+      size.height * 0.7,
+      size.width * 0.25,
+      size.height * 0.4,
+    );
 
     // Right hemisphere
     path.moveTo(size.width * 0.75, size.height * 0.4);
-    path.quadraticBezierTo(size.width * 0.9, size.height * 0.3, size.width * 0.8, size.height * 0.2);
-    path.quadraticBezierTo(size.width * 0.7, size.height * 0.1, size.width * 0.6, size.height * 0.2);
-    path.quadraticBezierTo(size.width * 0.55, size.height * 0.3, size.width * 0.55, size.height * 0.5);
-    path.quadraticBezierTo(size.width * 0.55, size.height * 0.7, size.width * 0.7, size.height * 0.8);
-    path.quadraticBezierTo(size.width * 0.85, size.height * 0.7, size.width * 0.75, size.height * 0.4);
+    path.quadraticBezierTo(
+      size.width * 0.9,
+      size.height * 0.3,
+      size.width * 0.8,
+      size.height * 0.2,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.7,
+      size.height * 0.1,
+      size.width * 0.6,
+      size.height * 0.2,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.55,
+      size.height * 0.3,
+      size.width * 0.55,
+      size.height * 0.5,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.55,
+      size.height * 0.7,
+      size.width * 0.7,
+      size.height * 0.8,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.85,
+      size.height * 0.7,
+      size.width * 0.75,
+      size.height * 0.4,
+    );
 
     // Connect hemispheres with a fold in the middle
     path.moveTo(size.width * 0.5, size.height * 0.15);
@@ -627,16 +720,36 @@ class BrainPainter extends CustomPainter {
 
     // Add some brain folds/details
     path.moveTo(size.width * 0.3, size.height * 0.3);
-    path.quadraticBezierTo(size.width * 0.35, size.height * 0.35, size.width * 0.3, size.height * 0.4);
+    path.quadraticBezierTo(
+      size.width * 0.35,
+      size.height * 0.35,
+      size.width * 0.3,
+      size.height * 0.4,
+    );
 
     path.moveTo(size.width * 0.7, size.height * 0.3);
-    path.quadraticBezierTo(size.width * 0.65, size.height * 0.35, size.width * 0.7, size.height * 0.4);
+    path.quadraticBezierTo(
+      size.width * 0.65,
+      size.height * 0.35,
+      size.width * 0.7,
+      size.height * 0.4,
+    );
 
     path.moveTo(size.width * 0.3, size.height * 0.6);
-    path.quadraticBezierTo(size.width * 0.35, size.height * 0.65, size.width * 0.3, size.height * 0.7);
+    path.quadraticBezierTo(
+      size.width * 0.35,
+      size.height * 0.65,
+      size.width * 0.3,
+      size.height * 0.7,
+    );
 
     path.moveTo(size.width * 0.7, size.height * 0.6);
-    path.quadraticBezierTo(size.width * 0.65, size.height * 0.65, size.width * 0.7, size.height * 0.7);
+    path.quadraticBezierTo(
+      size.width * 0.65,
+      size.height * 0.65,
+      size.width * 0.7,
+      size.height * 0.7,
+    );
 
     canvas.drawPath(path, paint);
   }
